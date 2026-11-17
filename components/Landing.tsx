@@ -15,12 +15,12 @@ function ScanPreview() {
       <div className="preview-devices">
         <div className="preview-device-slot">
           <div className="preview-phone"><div className="phone-live-screen">
-            <iframe title="AI-SKINWISE photo analysis screen" src="/scan?demo=loading&still&nointro" loading="eager" tabIndex={-1} />
+            <img src="/screens/scan-details.jpg" alt="AI-SKINWISE app: photo ready, with affected area and symptoms selected" width={1080} height={2270} draggable={false} />
           </div></div>
         </div>
         <div className="preview-device-slot">
           <div className="preview-phone"><div className="phone-live-screen">
-            <iframe title="AI-SKINWISE example result screen" src="/scan?demo=result&still&nointro" loading="eager" tabIndex={-1} />
+            <img src="/screens/scan-result.jpg" alt="AI-SKINWISE app: possible condition result with a reminder to consult a dermatologist" width={1080} height={2270} draggable={false} />
           </div></div>
         </div>
       </div>
