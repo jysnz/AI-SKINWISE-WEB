@@ -1,5 +1,5 @@
 // AI SkinWise Web. Detection runs on the SkinWise server (see AGENT.md).
-const DEFAULT_API = "https://ai-skinwise-v2-server.onrender.com/predict-skin-disease";
+const DEFAULT_API = "https://kiroverse-server.onrender.com/predict-skin-disease";
 // Override for local testing: index.html?api=http://localhost:8000
 const API = (() => {
   const q = new URLSearchParams(location.search).get("api");
@@ -37,21 +37,34 @@ function chip(label, pressed, role, onClick) {
   b.addEventListener("click", () => onClick(b));
   return b;
 }
+function refreshStatus() {
+  const n = state.files.length;
+  $("photoCount").textContent = n + " of " + MAX_FILES;
+  $("photoCount").classList.toggle("full", n === MAX_FILES);
+  const sc = $("symCount"); sc.hidden = !state.sym.size; sc.textContent = state.sym.size + " selected";
+  const missing = !n ? "Add at least one photo to continue" : !state.body ? "Choose the affected body part to continue" : "";
+  $("hint").textContent = missing || "Ready when you are";
+  $("hint").classList.toggle("ok", !missing);
+  $("go").classList.toggle("not-ready", !!missing);
+  $("go").setAttribute("aria-describedby", "hint");
+  $("drop").classList.toggle("full", n >= MAX_FILES);
+}
 function pop(b) { b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop"); }
 function updateChips() {
   document.querySelectorAll("#body .chip").forEach((b) => b.setAttribute("aria-checked", String(b.textContent === state.body)));
 }
 function renderChips() {
   $("body").replaceChildren(...BODY.map((p) => chip(p, state.body === p, "radio", (b) => {
-    state.body = p; updateChips(); pop(b);
+    state.body = p; updateChips(); pop(b); refreshStatus();
   })));
   $("sym").replaceChildren(...SYMPTOMS.map((s) => chip(s, state.sym.has(s), "button", (b) => {
     state.sym.has(s) ? state.sym.delete(s) : state.sym.add(s);
     b.setAttribute("aria-pressed", String(state.sym.has(s)));
-    pop(b);
+    pop(b); refreshStatus();
   })));
 }
 renderChips();
+document.addEventListener("DOMContentLoaded", refreshStatus);
 
 // ---- photos ----
 function setStep(n) {
@@ -79,6 +92,7 @@ function renderThumbs(popFrom = -1) {
     li.append(img, x); return li;
   }));
   setStep(state.files.length ? 2 : 1);
+  refreshStatus();
 }
 $("files").addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
 const drop = $("drop");
@@ -89,7 +103,9 @@ drop.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
 // ---- detection loading experience ----
 const STAGES = ["Enhancing photos", "Running AI analysis", "Matching symptoms"];
 let loadTimer = null;
-const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const QP = new URLSearchParams(location.search);
+const RM = matchMedia("(prefers-reduced-motion: reduce)").matches || QP.has("still");
+if (QP.has("still")) document.documentElement.classList.add("still");
 function setStageText(txt) {
   const note = $("loadNote");
   note.textContent = txt;
@@ -126,14 +142,18 @@ function hideLoading() {
   $("loadNote").textContent = STAGES[0];
 }
 
+function nudge(node) {
+  node.scrollIntoView({ behavior: RM ? "auto" : "smooth", block: "center" });
+  node.classList.remove("nudge"); void node.offsetWidth; node.classList.add("nudge");
+}
 // ---- submit ----
 let activeCtl = null;
 let cancelled = false;
 $("cancelBtn").addEventListener("click", () => { cancelled = true; activeCtl && activeCtl.abort(); });
 $("form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!state.files.length) return showError("Add at least one photo.");
-  if (!state.body) return showError("Choose the affected body part.");
+  if (!state.files.length) { nudge($("drop")); return showError("Add at least one photo."); }
+  if (!state.body) { nudge($("body")); return showError("Choose the affected body part."); }
   showError("");
 
   const fd = new FormData();
@@ -221,7 +241,7 @@ function render(data) {
 
   if (data.success === false) {
     const d = data.details || {};
-    left.append(el("h2", null, "We could not be sure"));
+    left.append(el("h2", "warn-h", "We could not be sure"));
     const head = el("div", "res-head");
     const final = Math.max(0, Math.min(100, Number(d.final) || 0));
     const ring = el("div", "ring"); ring.style.setProperty("--p", 0); ring.style.setProperty("--ring", "var(--warn)");
@@ -265,9 +285,16 @@ function render(data) {
       });
     left.append(m);
 
+    const seek = conf < 80 || /cellulitis|shingles|larva/i.test(p.disease_name || "");
+    const nx = el("div", "next" + (seek ? " urgent" : ""));
+    nx.append(el("strong", null, seek ? "Worth a professional look" : "What to do next"));
+    nx.append(el("p", null, seek
+      ? "This can look like other conditions and some need prescription care. Book a dermatologist visit, and sooner if it spreads, hurts more or comes with a fever."
+      : "Read the remedies below, keep the area clean, and see a dermatologist if it does not improve in a week or two."));
+    right.append(nx);
     right.append(panel("Description", listOrText(toList(info.description), "No description available."), true));
     right.append(panel("Typical symptoms", listOrText(toList(info.expected_symptoms), "No data."), false));
-    right.append(panel("Suggested remedies", listOrText(toList(info.suggested_treatment), "Consult a dermatologist."), false));
+    right.append(panel("Suggested remedies", listOrText(toList(info.suggested_treatment), "Consult a dermatologist."), true));
 
     const refs = (Array.isArray(info.references) ? info.references : []).map((r) => (r && (r.reference || r)) + "").filter((r) => /^https?:\/\//i.test(r.trim()));
     if (refs.length) {
@@ -304,7 +331,8 @@ function render(data) {
       : Math.max(0, Math.min(100, Number((data.prediction || {}).final_confidence) || 0));
     animateRing(ringEl, ringEl.querySelector("div"), c);
   }
-  box.scrollIntoView({ behavior: "smooth", block: "start" });
+  box.scrollIntoView({ behavior: RM ? "auto" : "smooth", block: "start" });
+  const h = card.querySelector("h2"); if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
 }
 function showPhoto(url) {
   $("photoDlgImg").src = url;
