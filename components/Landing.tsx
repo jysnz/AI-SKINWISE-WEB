@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { motion, MotionConfig } from "motion/react";
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import Info, { Faq } from "./Info";
 import Conditions from "./Conditions";
 import System from "./System";
@@ -14,20 +15,49 @@ function ScanPreview() {
     <div className="skin-preview" aria-label="Illustrative skin scan preview">
       <img className="skin-halo" src="/figma/blue-halo.svg" alt="" />
       <div className="preview-devices">
-        <div className="preview-device-slot">
+        <motion.div className="preview-device-slot float a" initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.5, ease }}>
           <div className="preview-phone"><div className="phone-live-screen">
             <img src="/screens/scan-details.jpg" alt="AI-SKINWISE app: photo ready, with affected area and symptoms selected" width={1080} height={2270} draggable={false} />
           </div></div>
-        </div>
-        <div className="preview-device-slot">
+        </motion.div>
+        <motion.div className="preview-device-slot float b" initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.68, ease }}>
           <div className="preview-phone"><div className="phone-live-screen">
             <img src="/screens/scan-result.jpg" alt="AI-SKINWISE app: possible condition result with a reminder to consult a dermatologist" width={1080} height={2270} draggable={false} />
           </div></div>
-        </div>
+        </motion.div>
       </div>
+      <span className="scan-sweep" aria-hidden="true" />
     </div>
   );
 }
+
+/** On phones a "Start a skin check" bar slides up once the hero is scrolled past, and steps aside at the final call to action. */
+function StickyStart() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const hero = document.querySelector(".skinwise-hero"), end = document.querySelector(".skinwise-final-cta");
+    if (!hero || !end) return;
+    const seen = { hero: true, end: false };
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) { if (e.target === hero) seen.hero = e.isIntersecting; else seen.end = e.isIntersecting; }
+      setShow(!seen.hero && !seen.end);
+    }, { threshold: 0.05 });
+    io.observe(hero); io.observe(end);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div className="sticky-start" initial={{ y: 90, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 90, opacity: 0 }} transition={{ type: "spring", stiffness: 380, damping: 34 }}>
+          <Link href="/scan" className="skin-button">Start a skin check <Arrow /></Link>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+const strip = { hidden: {}, shown: { transition: { staggerChildren: 0.1 } } };
+const stripItem = { hidden: { opacity: 0, y: 18 }, shown: { opacity: 1, y: 0, transition: { duration: 0.6, ease } } };
 
 const rise = (i: number) => ({
   hidden: { opacity: 0, y: 22 },
@@ -56,11 +86,11 @@ export default function Landing() {
           </motion.div>
         </section>
 
-        <section className="care-strip" aria-label="Our approach">
-          <div><strong><b>01</b> A simpler starting point</strong><span>Photos and symptoms. Clearer next steps.</span></div>
-          <div><strong><b>02</b> Nine conditions covered</strong><span>Focused insights, not guesswork.</span></div>
-          <div><strong><b>03</b> Your health comes first</strong><span>Guidance with its limits made clear.</span></div>
-        </section>
+        <motion.section className="care-strip" aria-label="Our approach" variants={strip} initial="hidden" whileInView="shown" viewport={{ once: true, margin: "-40px" }}>
+          <motion.div variants={stripItem}><strong><b>01</b> A simpler starting point</strong><span>Photos and symptoms. Clearer next steps.</span></motion.div>
+          <motion.div variants={stripItem}><strong><b>02</b> Nine conditions covered</strong><span>Focused insights, not guesswork.</span></motion.div>
+          <motion.div variants={stripItem}><strong><b>03</b> Your health comes first</strong><span>Guidance with its limits made clear.</span></motion.div>
+        </motion.section>
 
         <div className="skinwise-content">
           <Info />
@@ -83,16 +113,17 @@ export default function Landing() {
           <Faq />
         </div>
 
-        <section className="skinwise-final-cta">
+        <motion.section className="skinwise-final-cta" initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-60px" }} transition={{ duration: 0.7, ease }}>
           <div><span className="section-eyebrow">YOUR NEXT STEP STARTS HERE</span><h2>Less wondering.<br />More understanding.</h2><p>Take a closer look at your skin, with a little help from AI-SKINWISE.</p></div>
           <Link href="/scan" className="skin-button">Start a skin check <Arrow /></Link>
-        </section>
+        </motion.section>
         <footer className="skinwise-footer">
           <a className="footer-brand" href="#top">AI-SKINWISE</a>
           <p>A thoughtful first step for skin concerns.</p>
           <span>AI-SKINWISE provides general information, not a medical diagnosis.</span>
         </footer>
       </main>
+      <StickyStart />
     </MotionConfig>
   );
 }

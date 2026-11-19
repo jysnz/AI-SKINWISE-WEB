@@ -1,9 +1,8 @@
 "use client";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import clsx from "clsx";
-import NumberFlow from "@number-flow/react";
 import { clamp, toList, type ApiResult, type Photo } from "@/lib/api";
-import { useMounted, useReducedMotion } from "@/lib/hooks";
+import { useReducedMotion } from "@/lib/hooks";
 import { AccordionList } from "./Info";
 
 const List = ({ items, empty }: { items: string[]; empty: string }) =>
@@ -18,7 +17,6 @@ export default function Result({ data, photos, onReset, onPhoto }: { data: ApiRe
   const p = ok ? data.prediction : {};
   const info = ok ? data.info : {};
   const conf = clamp(ok ? p.final_confidence : data.details?.final);
-  const shown = useMounted(conf, 0);
   const rawName = p.disease_name || "Unknown";
   // Only a successful answer can be "outside coverage"; a low-confidence failure has no prediction at all.
   const outsideCoverage = ok && /^(unknown|none)$/i.test(rawName);
@@ -27,15 +25,9 @@ export default function Result({ data, photos, onReset, onPhoto }: { data: ApiRe
   const name = rawName;
   const needsPromptCare = /cellulitis|shingles|larva/i.test(name);
   const seek = low || needsPromptCare;
-  // "No supported match" is not a score the person can act on, so the ring is only shown when there is a real estimate.
-  const showRing = !outsideCoverage;
   const title = !ok ? "We could not be sure" : outsideCoverage ? "No supported match" : name;
   const refs = ok && Array.isArray(info.references)
     ? info.references.map((r: any) => String((r && r.reference) || r)).filter((r) => /^https?:\/\//i.test(r.trim())) : [];
-  // Figures from the server: the photo analysis, and how well the symptoms matched (only when symptoms were given).
-  const num = (v: unknown) => (v == null || v === "" || !Number.isFinite(Number(v)) ? null : Math.round(clamp(v)));
-  const visual = ok ? num(p.visual_confidence_avg) : num(data.details?.visual);
-  const match = ok ? (p.symptom_analysis && p.symptom_analysis !== "N/A" ? num(p.symptom_match_score) : null) : num(data.details?.match);
   const pics = photos.slice(0, 3);
   const cur = pics[Math.min(active, pics.length - 1)];
 
@@ -65,7 +57,7 @@ export default function Result({ data, photos, onReset, onPhoto }: { data: ApiRe
       : normal
         ? "The model did not identify one of its supported conditions. A normal result cannot rule out every concern, so seek professional advice if the area changes or worries you."
         : conf < 80
-          ? "The estimate has low confidence. Try a sharper photo in even light, add your symptoms, and consult a healthcare professional if you remain concerned."
+          ? "This result is uncertain. Try a sharper photo in even light, add your symptoms, and consult a healthcare professional if you remain concerned."
           : needsPromptCare
             ? "This can look like other conditions and some need prescription care. Book a dermatologist visit, and sooner if it spreads, hurts more or comes with a fever."
             : "Read the details below, keep the area clean, and see a dermatologist if it does not improve in a week or two.";
@@ -109,24 +101,12 @@ export default function Result({ data, photos, onReset, onPhoto }: { data: ApiRe
 
       <div className="res-body">
         <div className="res-top">
-          {showRing && (
-            <div className="ring" style={{ ["--p" as string]: shown, ["--ring" as string]: low ? "var(--warn)" : undefined }} role="img" aria-label={"Confidence " + Math.round(conf) + " percent"}>
-              <div><NumberFlow value={Math.round(shown)} suffix="%" /></div>
-            </div>
-          )}
           <div className="res-id">
             <h2 id="res-title" ref={head} tabIndex={-1} className="res-title">{title}</h2>
-            <span className={clsx("badge", low && "warn")}>{outsideCoverage ? "Outside model coverage" : low ? "Low confidence" : "High confidence"}</span>
-            {(visual != null || match != null) && (
-              <ul className="res-stats" aria-label="How the result was scored">
-                {visual != null && <li><b>{visual}%</b><span>Photo analysis</span></li>}
-                {match != null && <li><b>{match}%</b><span>Symptom match</span></li>}
-              </ul>
-            )}
           </div>
         </div>
 
-        {!ok && <p className="res-msg">{data.message || "Confidence was too low for a reliable result."}</p>}
+        {!ok && <p className="res-msg">{data.message || "We could not get a reliable result from these photos."}</p>}
 
         <div className={clsx("next", seek && "urgent")}>
           <span className="next-ic" aria-hidden="true">

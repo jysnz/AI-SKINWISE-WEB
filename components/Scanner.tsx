@@ -65,6 +65,20 @@ export default function SkinWise() {
             <div className="cap-heading">
               <h1 className="page-title">{view === "form" ? "Start a skin check" : "Analyzing your photos"}</h1>
               <p className="scan-intro">{view === "form" ? "Add up to three clear photos, the affected area and any symptoms." : "Checking your photos against the symptoms you gave."}</p>
+              {view === "form" && (
+                <ol className="sw-steps" aria-label="Progress">
+                  {(() => {
+                    const steps: [string, boolean][] = [["Photo", photos.length > 0], ["Area", !!details.body], ["Symptoms", details.symptoms.length > 0]];
+                    const now = steps.findIndex(([, d]) => !d);
+                    return steps.map(([label, done], i) => (
+                      <li key={label} className={done ? "done" : i === now ? "now" : undefined} aria-current={i === now ? "step" : undefined}>
+                        <span className="sw-dot" aria-hidden="true">{done ? <svg viewBox="0 0 16 16" width="12" height="12" fill="none"><path d="m3.5 8.5 3 3 6-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg> : i + 1}</span>
+                        {label}{i === 2 && <span className="sw-opt">optional</span>}
+                      </li>
+                    ));
+                  })()}
+                </ol>
+              )}
             </div>
           )}
           <motion.div key={view} className="scan-view" {...swap}>
