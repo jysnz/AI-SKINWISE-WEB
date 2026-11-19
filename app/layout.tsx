@@ -21,7 +21,7 @@ const SKIP_INTRO = `(function(){try{var d=document.documentElement;if(top!==self
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     // suppressHydrationWarning: the script above adds data-intro to <html> before React hydrates.
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" className={inter.variable} data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
         {/* Critical: the intro must cover the page from the very first paint, before the stylesheet arrives. */}
         <style dangerouslySetInnerHTML={{ __html: ".intro{position:fixed;inset:0;z-index:100;background:#fff}html[data-intro=off] .intro{display:none}" }} />

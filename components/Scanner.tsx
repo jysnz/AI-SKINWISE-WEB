@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Toaster, toast } from "sonner";
-import { DEMO_LOW, DEMO_OK, TIMEOUT_MS, demoPhotos, predict, type ApiResult, type Photo } from "@/lib/api";
+import { DEMO_LOW, DEMO_NONE, DEMO_OK, TIMEOUT_MS, demoPhotos, predict, type ApiResult, type Details, type Photo } from "@/lib/api";
 import { debugSkinWise, debugSkinWiseError } from "@/lib/debug";
 import Form from "./Form";
 import Loading from "./Loading";
@@ -15,6 +15,8 @@ const swap = { initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, tr
 export default function SkinWise() {
   const [view, setView] = useState<View>("form");
   const [photos, setPhotos] = useState<Photo[]>([]);
+  // Kept here, not in the form, so photos and details survive the loading view and a failed or cancelled scan.
+  const [details, setDetails] = useState<Details>({ body: null, symptoms: [], description: "" });
   const [result, setResult] = useState<ApiResult | null>(null);
   const [zoom, setZoom] = useState<string | null>(null);
   const ctl = useRef<AbortController | null>(null);
@@ -28,17 +30,17 @@ export default function SkinWise() {
     if (!demo) return;
     setPhotos(demoPhotos());
     if (demo === "loading") setView("loading");
-    else { setResult(demo === "result" ? DEMO_OK : DEMO_LOW); setView("result"); }
+    else { setResult(demo === "result" ? DEMO_OK : demo === "none" ? DEMO_NONE : DEMO_LOW); setView("result"); }
   }, []);
 
   async function submit() {
-    debugSkinWise("scan.analysis.started", { photoCount: photos.length });
+    debugSkinWise("scan.analysis.started", { photoCount: photos.length, symptomCount: details.symptoms.length, hasBodyArea: !!details.body });
     window.scrollTo({ top: 0, behavior: "auto" });
     setView("loading");
     const c = new AbortController(); ctl.current = c; cancelled.current = false;
     const kill = setTimeout(() => c.abort(), TIMEOUT_MS);
     try {
-      const data = await predict({ photos, signal: c.signal });
+      const data = await predict({ photos, details, signal: c.signal });
       setResult(data); setView("result");
     } catch (err: any) {
       setView("form");
@@ -57,35 +59,27 @@ export default function SkinWise() {
 
   return (
     <>
-      <main id="top" className="wrap scan-product-page">
+      <main id="top" className={"wrap scan-product-page" + (view === "result" ? "" : " scan-fit")}>
         <div id="scan" className="scan-anchor">
           {view !== "result" && (
-            <div className="scan-page-heading">
-              <span className="section-eyebrow">A CLEARER FIRST LOOK</span>
+            <div className="cap-heading">
               <h1 className="page-title">{view === "form" ? "Start a skin check" : "Analyzing your photos"}</h1>
-              <p className="scan-intro">{view === "form" ? "Upload up to three clear photos for an AI-powered visual estimate." : "Your photos are being compared with supported visual patterns."}</p>
-              <ol className="scan-steps" aria-label="Skin check progress">
-                <li className={view === "form" ? "current" : "complete"}><b>01</b><span>Add photos</span></li>
-                <li className={view === "loading" ? "current" : view === "form" ? "" : "complete"}><b>02</b><span>Compare patterns</span></li>
-                <li><b>03</b><span>Review estimate</span></li>
-              </ol>
-              {view === "form" && <aside className="scan-boundary-note" aria-label="Medical guidance">
-                <span aria-hidden="true">i</span>
-                <p><strong>Visual estimate only.</strong> Symptoms and body area are not analyzed. This result is general information, not a diagnosis.</p>
-              </aside>}
+              <p className="scan-intro">{view === "form" ? "Add up to three clear photos, the affected area and any symptoms." : "Checking your photos against the symptoms you gave."}</p>
             </div>
           )}
-          <motion.div key={view} {...swap}>
+          <motion.div key={view} className="scan-view" {...swap}>
             {view === "form" && (
-              <Form photos={photos} setPhotos={setPhotos} onSubmit={submit} />
+              <Form photos={photos} setPhotos={setPhotos} details={details} setDetails={setDetails} onSubmit={submit} />
             )}
-            {view === "loading" && <Loading photos={photos} onCancel={cancel} />}
+            {view === "loading" && <Loading photos={photos} hasSymptoms={details.symptoms.length > 0 || !!details.description.trim()} onCancel={cancel} />}
             {view === "result" && result && <Result data={result} photos={photos} onReset={reset} onPhoto={setZoom} />}
           </motion.div>
         </div>
-        <footer className="foot">
-          <p className="disclaimer">AI SkinWise gives general information, not a medical diagnosis. See a licensed dermatologist for any concern.</p>
-        </footer>
+        {view !== "result" && (
+          <footer className="foot">
+            <p className="disclaimer">AI SkinWise is not 100% accurate and does not give a medical diagnosis. It is best to consult a board-certified dermatologist for any concern.</p>
+          </footer>
+        )}
       </main>
 
       <Dialog.Root open={!!zoom} onOpenChange={(o) => !o && setZoom(null)}>

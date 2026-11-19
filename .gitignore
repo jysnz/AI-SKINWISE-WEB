@@ -5,3 +5,6 @@ next-env.d.ts
 *.tsbuildinfo
 marketing/frames
 marketing/.tmp
+
+.env
+.env.local

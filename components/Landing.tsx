@@ -3,6 +3,7 @@ import Link from "next/link";
 import { motion, MotionConfig } from "motion/react";
 import Info, { Faq } from "./Info";
 import Conditions from "./Conditions";
+import System from "./System";
 import { useReveal } from "@/lib/hooks";
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -56,13 +57,14 @@ export default function Landing() {
         </section>
 
         <section className="care-strip" aria-label="Our approach">
-          <div><strong><b>01</b> A simpler starting point</strong><span>One photo. Clearer next steps.</span></div>
+          <div><strong><b>01</b> A simpler starting point</strong><span>Photos and symptoms. Clearer next steps.</span></div>
           <div><strong><b>02</b> Nine conditions covered</strong><span>Focused insights, not guesswork.</span></div>
           <div><strong><b>03</b> Your health comes first</strong><span>Guidance with its limits made clear.</span></div>
         </section>
 
         <div className="skinwise-content">
           <Info />
+          <System />
           <Conditions />
           <section className="responsible-section" aria-labelledby="responsible-title">
             <div className="responsible-card">

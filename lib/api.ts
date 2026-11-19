@@ -1,13 +1,20 @@
 import { debugSkinWise, debugSkinWiseError } from "./debug";
 
-export const DEFAULT_API = "https://kiroverse-server.onrender.com/predict-skin-disease";
+/** The SkinWise server (C:\Projects\AI-SKINWISE\AI-SKINWISE-V2-SERVER). It reads the photos, the affected area and the
+ *  symptoms together and returns the condition info; the web does no scoring of its own. */
+export const DEFAULT_API = "https://ai-skinwise-v2-server.onrender.com/predict-skin-disease";
 export const TIMEOUT_MS = 90000;
 export const MAX_FILES = 3;
 export const MAX_MB = 10;
+export const MAX_DESC = 500;
+/** Same lists as the original web form. The server lower-cases body_location and compares it with face, neck, scalp, back, chest, hand and foot. */
+export const BODY_AREAS = ["Face", "Scalp", "Neck", "Chest", "Back", "Arm", "Hand", "Stomach", "Leg", "Foot"];
+export const SYMPTOMS = ["Itchiness", "Redness", "Swelling", "Dryness", "Peeling", "Bleeding", "Pain/Stinging", "Bumps/Blisters", "Discoloration", "Scaly Skin"];
 
 export type Photo = { file: File | null; url: string };
+export type Details = { body: string | null; symptoms: string[]; description: string };
 export type Info = { description?: string | string[]; expected_symptoms?: string | string[]; suggested_treatment?: string | string[]; references?: unknown[] };
-export type Prediction = { disease_name?: string; final_confidence?: number; visual_confidence_avg?: number };
+export type Prediction = { disease_name?: string; final_confidence?: number; visual_confidence_avg?: number; symptom_match_score?: number; symptom_analysis?: string };
 export type ApiResult =
   | { success: true; prediction: Prediction; info: Info }
   | { success: false; low_confidence?: boolean; message?: string; details?: { visual?: number; match?: number; final?: number } };
@@ -19,9 +26,13 @@ export function apiUrl(): string {
   return q && /^https?:\/\//.test(q) ? q.replace(/\/$/, "") + "/predict-skin-disease" : DEFAULT_API;
 }
 
-export async function predict(opts: { photos: Photo[]; signal: AbortSignal }): Promise<ApiResult> {
+export async function predict(opts: { photos: Photo[]; details: Details; signal: AbortSignal }): Promise<ApiResult> {
   const fd = new FormData();
-  opts.photos.forEach((p) => p.file && fd.append("image", p.file));
+  // Field names are the server's: image_1 to image_3, body_location, selected_symptoms, user_description.
+  opts.photos.forEach((p, i) => p.file && fd.append("image_" + (i + 1), p.file));
+  fd.append("body_location", opts.details.body ?? "");
+  fd.append("selected_symptoms", opts.details.symptoms.join(", "));
+  fd.append("user_description", opts.details.description.trim());
   const configuredEndpoint = apiUrl();
   // Keep the default prediction request same-origin so browser CORS policy does not
   // block it. Custom ?api= URLs remain available for local development servers.
@@ -40,6 +51,9 @@ export async function predict(opts: { photos: Photo[]; signal: AbortSignal }): P
     method: "POST",
     photoCount: files.length,
     photos: JSON.stringify(files),
+    symptomCount: opts.details.symptoms.length,
+    hasBodyArea: !!opts.details.body,
+    hasNotes: !!opts.details.description.trim(),
     timeoutMs: TIMEOUT_MS,
   });
 
@@ -88,7 +102,8 @@ export async function predict(opts: { photos: Photo[]; signal: AbortSignal }): P
   if (data.error) {
     debugSkinWiseError("prediction.response.api_error", {
       status: res.status,
-      fields: Object.keys(data).join(","),
+      code: typeof data.code === "string" ? data.code : undefined,
+      message: String(data.error).slice(0, 200), // the server's own error text, never the person's input
       elapsedMs,
     });
     throw new Error(String(data.error));
@@ -121,5 +136,7 @@ export function demoPhotos(): Photo[] {
     return { file: null, url: c.toDataURL("image/png") };
   });
 }
-export const DEMO_OK: ApiResult = { success: true, prediction: { disease_name: "Ringworm", final_confidence: 87.4, visual_confidence_avg: 87.4 }, info: { description: "Illustrative visual estimate only. The model does not analyze symptoms or body location and this is not a diagnosis." } };
-export const DEMO_LOW: ApiResult = { success: false, low_confidence: true, message: "Confidence was too low for a reliable result.", details: { visual: 64, match: 52, final: 71 } };
+// Demo data for ?demo=... previews. Shaped like the server's answers; the text is labelled illustrative.
+export const DEMO_OK: ApiResult = { success: true, prediction: { disease_name: "Ringworm", final_confidence: 87.4, visual_confidence_avg: 84.2, symptom_match_score: 91, symptom_analysis: "matched" }, info: { description: "Illustrative result for a preview. This is not a diagnosis.", expected_symptoms: "Illustrative sample text.", suggested_treatment: "Illustrative sample text." } };
+export const DEMO_LOW: ApiResult = { success: false, low_confidence: true, message: "The visual and symptom data conflict, or confidence is too low.", details: { visual: 64, match: 52, final: 71 } };
+export const DEMO_NONE: ApiResult = { success: true, prediction: { disease_name: "Unknown", final_confidence: 100, visual_confidence_avg: 100, symptom_match_score: 100, symptom_analysis: "N/A" }, info: { description: "Result: Unknown", suggested_treatment: "Consult a professional." } };

@@ -4,32 +4,33 @@ Handoff file for any agent continuing this work. Read it fully, then check `cook
 
 ## Goal
 
-A web version of AI-SKINWISE. The user uploads 1 to 3 photos and gets a visual classification with confidence. The current model does not analyze symptoms or body location and does not provide treatment advice.
+A web version of AI-SKINWISE. The user uploads 1 to 3 photos, chooses the affected body area (required) and optionally ticks symptoms and adds a note. The SkinWise server reads all of it together and returns the condition, a confidence, how well the symptoms matched, and the description, typical symptoms, remedies and references. (Restored in Round 29; Rounds 1 to 28 used a photo-only server, see below.)
 
 ## Where the detection logic lives (source of truth, do not edit)
 
-`C:\Projects\KIROVERSE_SERVER` (outside this repo):
+`C:\Projects\AI-SKINWISE\AI-SKINWISE-V2-SERVER` (outside this repo, deployed on Render as `AI-SKINWISE-V2-SERVER`):
 
 | Path | Role |
 |---|---|
-| `routes/predict.py` | `POST /predict-skin-disease`, accepts one image field named `image` |
-| `inference.py` | validates, resizes to 224x224, runs TFLite classification, returns class probabilities |
-| `main.py` | FastAPI app and CORS configuration |
+| `routers/prediction.py` | `POST /predict-skin-disease`: form fields `selected_symptoms`, `user_description`, `body_location`, files `image_1` to `image_3` |
+| `utils/image.py`, `utils/translation.py` | validate, colour-correct and classify each photo; translate and match the symptom text |
+| `labels.txt` | the condition labels the model returns |
+
+How it scores (from the code): photo scores are averaged; if the top class is Normal or Unknown, or the photo score is under 50, it answers as-is; otherwise it looks the condition up in Supabase, blends the photo score with the symptom match (the photo wins when it is very clear), applies small body-area adjustments, and answers low confidence (`success: false`, `details: {visual, match, final}`) when the final score is under 80.
 
 ## Architecture decision
 
-The web app does NOT run the TFLite model in the browser. The Next.js server proxies requests to:
+The web app does NOT run the model in the browser. The browser posts to the same-origin `/api/predict-skin-disease` route (`app/api/predict-skin-disease/route.ts`), which forwards the same fields to:
 
-`POST https://kiroverse-server.onrender.com/predict-skin-disease` (multipart form)
+`POST https://ai-skinwise-v2-server.onrender.com/predict-skin-disease` (multipart form)
 
-The Next.js route sends each selected photo separately as `image`, then averages the returned class probabilities. The browser uses the same-origin `/api/predict-skin-disease` route to avoid CORS issues.
+and returns the server's JSON unchanged. The web does no scoring. Override the host with `SKINWISE_API_URL=http://localhost:8000` (server side) or `?api=...` (browser, direct). A non-JSON answer (Render's "suspended" or sleeping page) is turned into a plain error message instead of a parse failure.
 
-Responses:
-- Kiroverse returns `{success, disease, confidence, probabilities}`. The proxy maps this into the web result shape.
-- The web UI marks a score below 80% as low confidence and treats `Unknown` as outside model coverage.
-- The estimate is visual-only; symptoms, body area, and treatment guidance are not provided by this model.
+**Warning (checked 2026-11-18): that Render service answers `503 This service has been suspended`.** Until it is resumed in the Render dashboard (or run locally from the server folder, which needs its env vars and a Firebase admin json the user must supply) the scan shows "The SkinWise analysis server is not available right now (HTTP 503)". The simpler photo-only server `https://kiroverse-server.onrender.com/predict-skin-disease` (one field `image`, returns `{success, disease, confidence, probabilities}`) was what Rounds 1 to 28 used and is still up; do NOT silently fall back to it, it ignores symptoms.
 
-The server runs on Render and may cold start, so allow up to 90 seconds. The Next.js proxy records upstream HTTP status and content type in the server console.
+Test without the real server: `node cook/mock-server.mjs` (stand-in, port 8123), start the dev server with `SKINWISE_API_URL=http://localhost:8123 npm run dev`, then `node cook/scan-e2e.mjs <outDir>`. Body area Face answers low confidence, Foot answers Unknown, anything else a full result.
+
+The server runs on Render and may cold start, so allow up to 90 seconds. The Next.js proxy logs counts only (photos, whether symptoms and notes were sent), never their content.
 
 ## Design tokens (from `theme_constants.dart`)
 
@@ -135,3 +136,10 @@ URL params for demo/testing (use them on `/scan`) (harmless in production, no vi
 - [x] Round 23 (2026-11-17): splash rebuilt and actually mounted (`<Intro />` in `app/layout.tsx`; it was not rendered before): brackets draw in, scan line brings the logo into focus, wordmark rises per letter, curtain lifts, hero rises after `sw:reveal` (`useReveal` in `lib/hooks.ts`). Added `suppressHydrationWarning` on `<html>` (fixes the dev "1 Issue" badge), Inter via `next/font`, logo in header, result page shows one confidence figure, stepper connectors, larger landing copy. New CSS is appended at the end of `app/globals.css` ("Intro" and "Polish layer"). Stills in `cook/stills/r06/`.
 - [x] Round 24 (2026-11-17): splash plays on every full load (no sessionStorage skip; reduced motion gets a short fade). Exit is now a FLIP: the intro logo flies into the header logo (`.topbar .brand img`, hidden via `html[data-fly]` until it lands) while the white fades and the hero rises; falls back to the curtain wipe if there is no header logo. Added a scan lock-on pulse. Logic in `components/Intro.tsx` (`lift`), styles in the "Intro" section of `app/globals.css`. Frames: `cook/stills/r06/fly-*`.
 - [x] Round 23 (2026-11-17): routed default browser prediction requests through a same-origin Next.js API endpoint to avoid upstream browser CORS blocking. Kept custom local API overrides direct. Added server-side request/response diagnostics and a structured 502 when the prediction host is unreachable.
+- [x] Round 25 (2026-11-18): /scan redesigned around one capture stage (`.cap-*` in the end of `app/globals.css`, `components/Form.tsx`, `components/Loading.tsx`). Removed the eyebrow, stepper, info strip and "About this check" card; heading is centered. Empty: blue viewfinder with breathing brackets and an idle scan line, the whole stage is the upload target (keyboard focusable input `#cap-file`). Photo added: brackets lock on, one sweep, thumbnails switch/remove/add. Analyzing: same stage, scan loops, status pill, thin progress bar. Typechecked; verified with `node cook/scan-states.mjs <outDir> [w] [h]` and `node cook/scan-interact.mjs` (needs dev server on :3000). Result view untouched. Not checked on a real device.
+- [x] Round 26 (2026-11-18): /scan form and analyzing views fit one screen on laptops and desktops (min-width 901px) with no page scroll: `main` gets `.scan-fit` (not on the result view), the capture stage flexes to the height left under the 81px header, short windows (max-height 760px) hide the fine print. Photo now shown whole (`object-fit: contain` plus blurred fill, `.cap-cell`). Verified FITS at 1920x950, 1536x730, 1440x780, 1366x650, 1280x620, 1280x720, 1024x600 in all three states with `node cook/scan-fit.mjs [outDir]`; below 170px of stage the page scrolls again instead of clipping. Mobile and tablet portrait unchanged.
+- [x] Round 27 (2026-11-18): /scan result screen redesigned (`components/Result.tsx`, `.res-*` CSS): photo in the locked capture stage on the left, verdict, next-steps card and accordion on the right; no ring for "No supported match"; fits one screen on laptops (`node cook/res-fit.mjs`, 21/21 FITS); disclaimer "not 100% accurate, consult a board-certified dermatologist" inside the next-steps card, and in the scan footer. `?demo=none` previews the outside-coverage result. Small pending polish NOT applied: non-breaking hyphen in "board-certified" (wraps as board-/certified) and an amber `.res .badge.warn`.
+- [x] Round 28 (2026-11-18): landing "The system" section (`components/System.tsx`, `.sys-*` CSS, nav item "The system"): Patient app lane (9 steps) and Clinic admin lane (10 steps) with a phone each, then a "Behind both apps" server strip. All wording checked against `C:/Projects/AI-SKINWISE` code (patient app takes ONE photo; PayMongo GCash/card/Maya; Meet link after payment; "Process disbursement" deliberately not mentioned). Phones are BLANK on purpose: add `img: "/screens/system/patient-1.jpg"` to a step in `components/System.tsx` (portrait, ~1080x2270) and the phone shows the active step (hover, focus or click). Check with `node cook/system-shots.mjs <outDir>`.
+- [x] Round 29 (2026-11-18): symptom-based detection restored. Form (`components/Form.tsx`): photos on the left in the capture stage, right side has Affected area chips (required, 10 areas), Symptoms chips (10, optional) and "Anything else?" notes (500 chars); state lives in `Scanner.tsx` so it survives loading and errors. `lib/api.ts` posts `image_1..3`, `body_location`, `selected_symptoms`, `user_description`; proxy route is a pass-through to the V2 server. Result shows Photo analysis and Symptom match figures, the server message and Description / Typical symptoms / Suggested remedies / References. Loading stages: Enhancing photos, Running AI analysis, Matching symptoms (or Combining photo scores when no symptoms). All "photo-only / symptoms not analyzed" copy removed (landing How it works, FAQ, content.ts, result). The V2 server is SUSPENDED on Render right now, see Architecture. Verified end to end against `cook/mock-server.mjs` and fit at 7 laptop sizes (`cook/scan-fit.mjs`, `cook/res-fit.mjs`: 42/42 FITS). Page height is now definite on desktop (`.scan-fit` uses `height: max(480px, 100svh - 81px)`) so the chips panel and result accordion shrink or scroll inside themselves.
+- [x] Round 29b: landing "The system" phones now show real screens from the user: `public/screens/system/patient-find-clinic.jpg` (step 4 Find a clinic, patient lane opens on it) and `clinic-dashboard.jpg` (clinic lane default). Status bar cropped off. More screenshots: add `img` to a step in `components/System.tsx`.
+- [x] Round 29c (2026-11-18): dev overlay "Console Error prediction.response.api_error" fixed. Handled failures (server error JSON, timeouts, cancelled scans) are logged with `console.warn` in `lib/debug.ts`, not `console.error`, because Next shows every console.error as a red Issue. The log now carries the server status, code and message. Verified with `node cook/scan-error.mjs` and `node cook/scan-overlay.mjs`.
